@@ -82,4 +82,35 @@ npm start
 
 - 當你按下 AI 送出時，前端會先向 `/health` 偵測後端代理是否可用。若可用，前端會呼叫 `POST /api/ai`，並在 `Proxy Secret` 有填值時帶入 `x-client-secret` 標頭。
 - 若未偵測到代理，且你有在 `API Key` 欄位貼上 OpenAI Key，前端會直接呼叫 OpenAI（請注意安全風險）。
+
+部署到雲端（快速指南）
+
+以下示範兩種常見方式：Render（最簡單）與 Google Cloud Run（更靈活、可擴充）。兩者都支援 Docker 映像。
+
+1) Render（快速、免費層可用）
+- 在 Render 建立新服務選擇 "Web Service" → 連接你的 GitHub repository → 選 `main` 分支。
+- Build 命令: `docker build -t focusstats .`（Render 會自動使用 Dockerfile）
+- Start 命令: `docker run -e OPENAI_API_KEY=$OPENAI_API_KEY -p 3000:3000 focusstats`（在 Render 設定環境變數 `OPENAI_API_KEY` 與 `CLIENT_SECRET`）
+
+2) Google Cloud Run（支援自動擴充與更細緻設定）
+- 建議先在本機建立映像（或直接用 Cloud Build）：
+
+```bash
+# 透過 Cloud Build (必要時先 gcloud auth login 並設定 project)
+gcloud builds submit --tag gcr.io/PROJECT-ID/focusstats
+gcloud run deploy focusstats --image gcr.io/PROJECT-ID/focusstats --platform managed --region us-central1 --allow-unauthenticated --set-env-vars OPENAI_API_KEY=YOUR_KEY,CLIENT_SECRET=YOUR_SECRET
+```
+
+- 或用 Docker + Cloud Run（先上傳到 Container Registry 再部署）：
+
+```bash
+docker build -t gcr.io/PROJECT-ID/focusstats .
+docker push gcr.io/PROJECT-ID/focusstats
+gcloud run deploy focusstats --image gcr.io/PROJECT-ID/focusstats --platform managed --region us-central1 --allow-unauthenticated --set-env-vars OPENAI_API_KEY=YOUR_KEY,CLIENT_SECRET=YOUR_SECRET
+```
+
+注意：若你使用 SSE 或 WebSocket，Cloud Run 與 Render 均支援，但要注意連線時間與最大請求大小限制。請在所選平台文件中檢查 keep-alive 與 timeout 設定。
+
+自動部署（GitHub Actions）
+- 你也可以建立 GitHub Actions，於 push 時自動 build 並 deploy 到 Cloud Run 或 Render。我可以幫你產生範例 workflow 檔案。
 # topic1
