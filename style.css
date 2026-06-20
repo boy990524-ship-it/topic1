@@ -1,0 +1,14 @@
+:root{
+  --bg:#f6f8fa;
+  --card:#ffffff;
+}
+body{
+  background:var(--bg);
+  font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+.card{border-radius:12px; box-shadow:0 2px 8px rgba(20,20,30,0.04);}
+.clock-display .time{letter-spacing:2px}
+#modeLabel{font-size:0.9rem}
+.btn-group .btn.active{background:#0d6efd; color:#fff}
+.modal{display:none}
+.modal.show{display:block}
