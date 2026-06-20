@@ -110,20 +110,47 @@ app.get('/sse', async (req, res) => {
     // Forward streamed chunks from OpenAI to client as SSE
     const reader = openaiRes.body.getReader();
     const decoder = new TextDecoder('utf-8');
+    let buffer = '';
     let done = false;
     while(!done){
       const {value, done: d} = await reader.read();
       done = d;
       if(value){
-        const chunk = decoder.decode(value);
-        // OpenAI already sends lines starting with 'data:'. Forward them.
-        // Ensure proper SSE framing: each chunk should be followed by double newline.
-        res.write(chunk);
+        buffer += decoder.decode(value, {stream: true});
+        // Split into lines
+        const lines = buffer.split(/\r?\n/);
+        // Keep last partial line in buffer
+        buffer = lines.pop() || '';
+        for(const line of lines){
+          if(!line) continue;
+          // OpenAI stream lines are prefixed with 'data: '
+          const match = line.match(/^data:\s?(.*)$/);
+          if(!match) continue;
+          const payload = match[1];
+          if(payload === '[DONE]'){
+            res.write('event:end\ndata:[DONE]\n\n');
+            res.end();
+            return;
+          }
+          try{
+            const parsed = JSON.parse(payload);
+            const delta = parsed?.choices?.[0]?.delta;
+            const text = delta?.content || '';
+            if(text){
+              // send plain text delta as SSE data
+              // escape any lone newlines by replacing with \n to keep SSE framing safe
+              const safe = text.replace(/\r?\n/g, '\\n');
+              res.write(`data: ${safe}\n\n`);
+            }
+          }catch(err){
+            // ignore malformed JSON from chunks
+          }
+        }
       }
     }
-    // signal end
-    res.write('\nevent:end\ndata:[DONE]\n\n');
-    res.end();
+    // if stream ended without explicit [DONE]
+    try{ res.write('event:end\ndata:[DONE]\n\n'); }catch(e){}
+    try{ res.end(); }catch(e){}
   }catch(err){
     console.error('SSE proxy error', err);
     try{ res.write(`event:error\ndata:${err.message}\n\n`); res.end(); }catch(e){}
