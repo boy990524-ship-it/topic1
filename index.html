@@ -97,8 +97,23 @@
               <label class="form-label">請輸入問題</label>
               <textarea id="aiPrompt" class="form-control" rows="4"></textarea>
             </div>
-            <div class="text-end">
-              <button id="sendAI" class="btn btn-primary">送出</button>
+            <div class="row g-2">
+              <div class="col-6">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" value="" id="forceProxyCheck" checked>
+                  <label class="form-check-label" for="forceProxyCheck">強制使用代理</label>
+                </div>
+              </div>
+              <div class="col-6 text-end">
+                <div class="d-flex align-items-center justify-content-end gap-2">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="liveReplyCheck" checked>
+                    <label class="form-check-label" for="liveReplyCheck">即時回覆</label>
+                  </div>
+                  <div id="aiSpinner" style="display:none; width:18px; height:18px;" class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                  <button id="sendAI" class="btn btn-primary">送出</button>
+                </div>
+              </div>
             </div>
             <hr>
             <div>

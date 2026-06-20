@@ -22,8 +22,11 @@
   const sendAI = document.getElementById('sendAI');
   const apiKeyInput = document.getElementById('apiKeyInput');
   const proxySecretInput = document.getElementById('proxySecretInput');
+  const forceProxyCheck = document.getElementById('forceProxyCheck');
   const aiPrompt = document.getElementById('aiPrompt');
   const aiResponse = document.getElementById('aiResponse');
+  const liveReplyCheck = document.getElementById('liveReplyCheck');
+  const aiSpinner = document.getElementById('aiSpinner');
 
   // Timer state
   let mode = 'work'; // 'work' or 'break'
@@ -268,12 +271,16 @@
     if(!prompt) return;
     aiResponse.textContent = '查詢中...';
     try{
-      // 1) 試探本機代理是否可用（/health）
+      // 1) 若使用者選擇強制使用代理，直接呼叫後端；否則先試探 /health
       let backendAvailable = false;
-      try{
-        const h = await fetch('/health');
-        backendAvailable = h.ok;
-      }catch(e){ backendAvailable = false; }
+      if(forceProxyCheck && forceProxyCheck.checked){
+        backendAvailable = true;
+      } else {
+        try{
+          const h = await fetch('/health');
+          backendAvailable = h.ok;
+        }catch(e){ backendAvailable = false; }
+      }
 
       if(backendAvailable){
         // 呼叫後端代理
@@ -301,6 +308,57 @@
       aiResponse.textContent = '錯誤：'+e.message;
     }
   });
+
+  // Live reply: send on input with debounce
+  function setSpinner(show){
+    if(!aiSpinner) return;
+    aiSpinner.style.display = show ? 'inline-block' : 'none';
+  }
+
+  function debounce(fn, wait){
+    let t;
+    return (...args)=>{
+      clearTimeout(t);
+      t = setTimeout(()=>fn(...args), wait);
+    };
+  }
+
+  const liveSend = debounce(async ()=>{
+    if(!liveReplyCheck || !liveReplyCheck.checked) return;
+    const prompt = aiPrompt.value.trim();
+    if(prompt.length < 3) return; // avoid tiny requests
+    setSpinner(true);
+    try{
+      // reuse logic: try backend first (respect forceProxyCheck and proxySecret)
+      const key = apiKeyInput.value.trim();
+      const proxySecret = proxySecretInput.value.trim();
+      let backendAvailable = false;
+      if(forceProxyCheck && forceProxyCheck.checked){ backendAvailable = true; }
+      else {
+        try{ const h = await fetch('/health'); backendAvailable = h.ok; }catch(e){ backendAvailable = false; }
+      }
+      if(backendAvailable){
+        const headers = {'Content-Type':'application/json'};
+        if(proxySecret) headers['x-client-secret'] = proxySecret;
+        const res = await fetch('/api/ai', {method:'POST', headers, body: JSON.stringify({prompt})});
+        const data = await res.json();
+        aiResponse.textContent = data?.choices?.[0]?.message?.content || JSON.stringify(data);
+        setSpinner(false);
+        return;
+      }
+      if(key){
+        const res = await fetch('https://api.openai.com/v1/chat/completions',{
+          method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+          body: JSON.stringify({model:'gpt-3.5-turbo', messages:[{role:'user', content:prompt}], max_tokens:300})
+        });
+        const data = await res.json();
+        aiResponse.textContent = data?.choices?.[0]?.message?.content || JSON.stringify(data);
+      }
+    }catch(e){ aiResponse.textContent = '錯誤：'+e.message; }
+    finally{ setSpinner(false); }
+  }, 600);
+
+  aiPrompt.addEventListener('input', liveSend);
 
   // Init
   function init(){
