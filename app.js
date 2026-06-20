@@ -27,6 +27,7 @@
   const aiResponse = document.getElementById('aiResponse');
   const liveReplyCheck = document.getElementById('liveReplyCheck');
   const aiSpinner = document.getElementById('aiSpinner');
+  let currentEventSource = null;
 
   // Timer state
   let mode = 'work'; // 'work' or 'break'
@@ -338,12 +339,33 @@
         try{ const h = await fetch('/health'); backendAvailable = h.ok; }catch(e){ backendAvailable = false; }
       }
       if(backendAvailable){
-        const headers = {'Content-Type':'application/json'};
-        if(proxySecret) headers['x-client-secret'] = proxySecret;
-        const res = await fetch('/api/ai', {method:'POST', headers, body: JSON.stringify({prompt})});
-        const data = await res.json();
-        aiResponse.textContent = data?.choices?.[0]?.message?.content || JSON.stringify(data);
-        setSpinner(false);
+        // If backend available, use SSE stream
+        // Close previous EventSource if any
+        if(currentEventSource){
+          try{ currentEventSource.close(); }catch(e){}
+          currentEventSource = null;
+        }
+        // build URL
+        const params = new URLSearchParams({prompt});
+        if(proxySecret) params.set('secret', proxySecret);
+        const url = '/sse?' + params.toString();
+        try{
+          setSpinner(true);
+          currentEventSource = new EventSource(url);
+          aiResponse.textContent = '';
+          currentEventSource.onmessage = (e)=>{
+            // append chunked data
+            aiResponse.textContent += e.data;
+          };
+          currentEventSource.onerror = (e)=>{
+            setSpinner(false);
+            try{ currentEventSource.close(); }catch(_){}
+            currentEventSource = null;
+          };
+        }catch(e){
+          setSpinner(false);
+          aiResponse.textContent = 'SSE 連線失敗：'+e.message;
+        }
         return;
       }
       if(key){

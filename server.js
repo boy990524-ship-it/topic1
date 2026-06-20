@@ -59,6 +59,77 @@ app.post('/api/ai', async (req, res) => {
   }
 });
 
+// SSE endpoint: client opens EventSource to receive streaming AI response.
+app.get('/sse', async (req, res) => {
+  const prompt = req.query.prompt || req.query.q;
+  if(!prompt) return res.status(400).json({error:'prompt required'});
+
+  // client secret optional check
+  const clientSecret = process.env.CLIENT_SECRET;
+  if(clientSecret){
+    const provided = req.query.secret || '';
+    if(provided !== clientSecret){
+      res.status(401).json({error:'Invalid client secret'});
+      return;
+    }
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if(!apiKey){
+    res.status(500).json({error:'Server has no OPENAI_API_KEY configured.'});
+    return;
+  }
+
+  // Setup SSE headers
+  res.setHeader('Content-Type','text/event-stream');
+  res.setHeader('Cache-Control','no-cache');
+  res.setHeader('Connection','keep-alive');
+  res.flushHeaders && res.flushHeaders();
+
+  try{
+    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-3.5-turbo',
+        messages: [{role:'user', content: prompt}],
+        stream: true
+      })
+    });
+
+    if(!openaiRes.ok){
+      const txt = await openaiRes.text();
+      res.write(`event:error\ndata:${txt}\n\n`);
+      res.end();
+      return;
+    }
+
+    // Forward streamed chunks from OpenAI to client as SSE
+    const reader = openaiRes.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let done = false;
+    while(!done){
+      const {value, done: d} = await reader.read();
+      done = d;
+      if(value){
+        const chunk = decoder.decode(value);
+        // OpenAI already sends lines starting with 'data:'. Forward them.
+        // Ensure proper SSE framing: each chunk should be followed by double newline.
+        res.write(chunk);
+      }
+    }
+    // signal end
+    res.write('\nevent:end\ndata:[DONE]\n\n');
+    res.end();
+  }catch(err){
+    console.error('SSE proxy error', err);
+    try{ res.write(`event:error\ndata:${err.message}\n\n`); res.end(); }catch(e){}
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`AI proxy server listening on http://localhost:${PORT}`);
 });
