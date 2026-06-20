@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -14,9 +15,34 @@ if(allowed){
   app.use(cors());
 }
 app.use(express.json());
+app.use(express.static(path.join(__dirname)));
 
-if(!process.env.OPENAI_API_KEY){
-  console.warn('Warning: OPENAI_API_KEY not set. Set it in .env for proxying requests.');
+function getOpenAIKey(){
+  const key = String(process.env.OPENAI_API_KEY || '').trim();
+  if(!key) return null;
+  const placeholderPattern = /your[_-]?openai[_-]?api[_-]?key|your[_-]?api[_-]?key|change[-_]?me|dummy/i;
+  if(placeholderPattern.test(key)) return null;
+  return key;
+}
+
+function createMockReply(prompt){
+  const trimmed = String(prompt || '').trim();
+  if(!trimmed){
+    return '請提供問題內容，AI 才能幫你回答。';
+  }
+  const lower = trimmed.toLowerCase();
+  if(lower.includes('你好') || lower.includes('hello') || lower.includes('hi')){
+    return '你好！目前沒有設定 OpenAI 金鑰，但我仍可以提供本地模擬回答。';
+  }
+  if(lower.includes('功能') || lower.includes('可以做') || lower.includes('幹嘛')){
+    return '這個專案可以作為番茄鐘與專注紀錄工具，並內建本地 AI 模擬回覆功能。';
+  }
+  return `這是本地模擬回覆，因為目前未設定 OpenAI API 金鑰。你剛剛問：${trimmed}`;
+}
+
+const OPENAI_API_KEY = getOpenAIKey();
+if(!OPENAI_API_KEY){
+  console.warn('Warning: OPENAI_API_KEY not set or is placeholder. Server will use local fallback AI responses.');
 }
 
 app.get('/health', (req, res) => res.json({status:'ok'}));
@@ -35,8 +61,16 @@ app.post('/api/ai', async (req, res) => {
     }
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if(!apiKey) return res.status(500).json({error:'Server has no OPENAI_API_KEY configured.'});
+  const apiKey = OPENAI_API_KEY;
+  if(!apiKey){
+    return res.json({
+      id: 'local-fallback',
+      object: 'chat.completion',
+      choices: [{
+        message: { role: 'assistant', content: createMockReply(prompt) }
+      }]
+    });
+  }
 
   try{
     const resp = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -74,9 +108,17 @@ app.get('/sse', async (req, res) => {
     }
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = OPENAI_API_KEY;
   if(!apiKey){
-    res.status(500).json({error:'Server has no OPENAI_API_KEY configured.'});
+    const message = createMockReply(prompt);
+    res.setHeader('Content-Type','text/event-stream');
+    res.setHeader('Cache-Control','no-cache');
+    res.setHeader('Connection','keep-alive');
+    res.flushHeaders && res.flushHeaders();
+    const safe = message.replace(/\r?\n/g, '\\n');
+    res.write(`data: ${safe}\n\n`);
+    res.write('event:sse_end\ndata:[DONE]\n\n');
+    res.end();
     return;
   }
 
@@ -102,7 +144,7 @@ app.get('/sse', async (req, res) => {
 
     if(!openaiRes.ok){
       const txt = await openaiRes.text();
-      res.write(`event:error\ndata:${txt}\n\n`);
+      res.write(`event:sse_error\ndata:${txt}\n\n`);
       res.end();
       return;
     }
@@ -128,7 +170,7 @@ app.get('/sse', async (req, res) => {
           if(!match) continue;
           const payload = match[1];
           if(payload === '[DONE]'){
-            res.write('event:end\ndata:[DONE]\n\n');
+            res.write('event:sse_end\ndata:[DONE]\n\n');
             res.end();
             return;
           }
@@ -149,7 +191,7 @@ app.get('/sse', async (req, res) => {
       }
     }
     // if stream ended without explicit [DONE]
-    try{ res.write('event:end\ndata:[DONE]\n\n'); }catch(e){}
+    try{ res.write('event:sse_end\ndata:[DONE]\n\n'); }catch(e){}
     try{ res.end(); }catch(e){}
   }catch(err){
     console.error('SSE proxy error', err);

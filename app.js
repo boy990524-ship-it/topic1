@@ -15,14 +15,25 @@
   const viewMonth = document.getElementById('viewMonth');
   const viewYear = document.getElementById('viewYear');
   const statsCanvas = document.getElementById('statsChart');
+  const recordList = document.getElementById('recordList');
+  const tabTimer = document.getElementById('tabTimer');
+  const tabRecords = document.getElementById('tabRecords');
+  const timerPage = document.getElementById('timerPage');
+  const recordsPage = document.getElementById('recordsPage');
+  // record controls
+  const recordFilter = document.getElementById('recordFilter');
+  const filterStart = document.getElementById('filterStart');
+  const filterEnd = document.getElementById('filterEnd');
+  const applyFilterBtn = document.getElementById('applyFilterBtn');
+  const clearRecordsBtn = document.getElementById('clearRecordsBtn');
+  const exportCsvBtn = document.getElementById('exportCsvBtn');
+  let currentFilteredSessions = null;
+  let lastStatsView = 'day';
 
   const openAIBtn = document.getElementById('openAIBtn');
   const aiModal = new bootstrap.Modal(document.getElementById('aiModal'));
   const closeAIModal = document.getElementById('closeAIModal');
   const sendAI = document.getElementById('sendAI');
-  const apiKeyInput = document.getElementById('apiKeyInput');
-  const proxySecretInput = document.getElementById('proxySecretInput');
-  const forceProxyCheck = document.getElementById('forceProxyCheck');
   const aiPrompt = document.getElementById('aiPrompt');
   const aiResponse = document.getElementById('aiResponse');
   const liveReplyCheck = document.getElementById('liveReplyCheck');
@@ -164,10 +175,126 @@
   function setActiveView(btn){
     [viewDay, viewMonth, viewYear].forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
+    // remember current view
+    if(btn === viewDay) lastStatsView = 'day';
+    if(btn === viewMonth) lastStatsView = 'month';
+    if(btn === viewYear) lastStatsView = 'year';
   }
   viewDay.addEventListener('click', ()=>{ setActiveView(viewDay); renderStats('day'); });
   viewMonth.addEventListener('click', ()=>{ setActiveView(viewMonth); renderStats('month'); });
   viewYear.addEventListener('click', ()=>{ setActiveView(viewYear); renderStats('year'); });
+
+  tabTimer.addEventListener('click', ()=> showPage('timer'));
+  tabRecords.addEventListener('click', ()=> showPage('records'));
+
+  function showPage(page){
+    if(page === 'records'){
+      tabTimer.classList.remove('btn-primary');
+      tabTimer.classList.add('btn-outline-primary');
+      tabRecords.classList.remove('btn-outline-primary');
+      tabRecords.classList.add('btn-primary');
+      timerPage.classList.add('d-none');
+      recordsPage.classList.remove('d-none');
+      renderStats(lastStatsView, currentFilteredSessions);
+      renderRecordList(currentFilteredSessions);
+    } else {
+      tabTimer.classList.add('btn-primary');
+      tabTimer.classList.remove('btn-outline-primary');
+      tabRecords.classList.add('btn-outline-primary');
+      tabRecords.classList.remove('btn-primary');
+      timerPage.classList.remove('d-none');
+      recordsPage.classList.add('d-none');
+    }
+  }
+
+  // Filter helpers
+  function parseDateInput(v){
+    if(!v) return null;
+    const t = new Date(v + 'T00:00:00');
+    return t.getTime();
+  }
+
+  function getFilteredSessions(){
+    const all = loadSessions().slice();
+    const mode = recordFilter?.value || 'all';
+    if(mode === 'all') return all;
+    if(mode === 'custom'){
+      const s = parseDateInput(filterStart.value);
+      const e = parseDateInput(filterEnd.value);
+      if(!s || !e) return all;
+      const endTs = e + 24*3600*1000 - 1;
+      return all.filter(x => x.end >= s && x.start <= endTs);
+    }
+    const days = parseInt(mode,10);
+    if(isNaN(days)) return all;
+    const cutoff = Date.now() - days*24*3600*1000;
+    return all.filter(x => x.end >= cutoff);
+  }
+
+  applyFilterBtn?.addEventListener('click', ()=>{
+    currentFilteredSessions = getFilteredSessions();
+    renderStats(lastStatsView, currentFilteredSessions);
+    renderRecordList(currentFilteredSessions);
+  });
+
+  recordFilter?.addEventListener('change', (e)=>{
+    if(e.target.value === 'custom'){
+      filterStart.style.display = 'inline-block';
+      filterEnd.style.display = 'inline-block';
+    } else {
+      filterStart.style.display = 'none';
+      filterEnd.style.display = 'none';
+    }
+  });
+
+  clearRecordsBtn?.addEventListener('click', ()=>{
+    if(!confirm('確定要清除所有紀錄嗎？此動作無法復原。')) return;
+    localStorage.removeItem(SESSIONS_KEY);
+    currentFilteredSessions = null;
+    renderStats(lastStatsView);
+    renderRecordList();
+  });
+
+  exportCsvBtn?.addEventListener('click', ()=>{
+    const sessions = currentFilteredSessions || loadSessions();
+    if(!sessions || !sessions.length){ alert('沒有可匯出的紀錄'); return; }
+    const rows = ['start,end,duration_seconds'];
+    sessions.slice().sort((a,b)=>a.start-b.start).forEach(s=>{
+      rows.push(`${new Date(s.start).toISOString()},${new Date(s.end).toISOString()},${s.duration}`);
+    });
+    const blob = new Blob([rows.join('\n')], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'focus_sessions.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  function renderRecordList(sessionsOverride){
+    const sessions = (sessionsOverride || loadSessions()).slice().sort((a,b)=>b.start - a.start);
+    if(!recordList) return;
+    if(!sessions.length){
+      recordList.innerHTML = '<div class="text-muted">尚無記錄，請開始工作計時以建立專注紀錄。</div>';
+      return;
+    }
+    recordList.innerHTML = sessions.slice(0, 6).map(s => {
+      const start = formatDateTime(new Date(s.start));
+      const end = formatDateTime(new Date(s.end));
+      const minutes = Math.max(1, Math.round(s.duration/60));
+      return `<div class="list-group-item">
+        <div class="record-title">${start} - ${minutes} 分鐘</div>
+        <div class="record-meta">結束時間：${end}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function formatDateTime(date){
+    const pad = n => String(n).padStart(2,'0');
+    return `${date.getFullYear()}/${pad(date.getMonth()+1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
 
   // Stats generation
   function startChart(){
@@ -178,8 +305,8 @@
     });
   }
 
-  function renderStats(view='day'){
-    const sessions = loadSessions();
+  function renderStats(view='day', sessionsOverride){
+    const sessions = sessionsOverride || loadSessions();
     const now = new Date();
     if(view==='day'){
       // hourly totals for today
@@ -259,56 +386,18 @@
       statsChart.update();
     }
   }
-
   // AI assistant
   openAIBtn.addEventListener('click', ()=>{
     aiModal.show();
   });
   closeAIModal.addEventListener('click', ()=> aiModal.hide());
   sendAI.addEventListener('click', async ()=>{
-    const key = apiKeyInput.value.trim();
-    const proxySecret = proxySecretInput.value.trim();
     const prompt = aiPrompt.value.trim();
     if(!prompt) return;
-    aiResponse.textContent = '查詢中...';
-    try{
-      // 1) 若使用者選擇強制使用代理，直接呼叫後端；否則先試探 /health
-      let backendAvailable = false;
-      if(forceProxyCheck && forceProxyCheck.checked){
-        backendAvailable = true;
-      } else {
-        try{
-          const h = await fetch('/health');
-          backendAvailable = h.ok;
-        }catch(e){ backendAvailable = false; }
-      }
-
-      if(backendAvailable){
-        // 呼叫後端代理
-        const headers = {'Content-Type':'application/json'};
-        if(proxySecret) headers['x-client-secret'] = proxySecret;
-        const res = await fetch('/api/ai', {method:'POST', headers, body: JSON.stringify({prompt})});
-        const data = await res.json();
-        aiResponse.textContent = data?.choices?.[0]?.message?.content || JSON.stringify(data);
-        return;
-      }
-
-      // 2) 若沒有代理可用，使用者有提供 OpenAI Key，則直接呼叫 OpenAI
-      if(key){
-        const res = await fetch('https://api.openai.com/v1/chat/completions',{
-          method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-          body: JSON.stringify({model:'gpt-3.5-turbo', messages:[{role:'user', content:prompt}], max_tokens:800})
-        });
-        const data = await res.json();
-        aiResponse.textContent = data?.choices?.[0]?.message?.content || JSON.stringify(data);
-        return;
-      }
-
-      aiResponse.textContent = '未偵測到後端代理，且未提供 OpenAI API Key。請啟動代理或輸入 API Key。';
-    }catch(e){
-      aiResponse.textContent = '錯誤：'+e.message;
-    }
+    await startAIStream(prompt);
   });
+
+  const apiBaseUrl = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
 
   // Live reply: send on input with debounce
   function setSpinner(show){
@@ -327,60 +416,55 @@
   const liveSend = debounce(async ()=>{
     if(!liveReplyCheck || !liveReplyCheck.checked) return;
     const prompt = aiPrompt.value.trim();
-    if(prompt.length < 3) return; // avoid tiny requests
-    setSpinner(true);
-    try{
-      // reuse logic: try backend first (respect forceProxyCheck and proxySecret)
-      const key = apiKeyInput.value.trim();
-      const proxySecret = proxySecretInput.value.trim();
-      let backendAvailable = false;
-      if(forceProxyCheck && forceProxyCheck.checked){ backendAvailable = true; }
-      else {
-        try{ const h = await fetch('/health'); backendAvailable = h.ok; }catch(e){ backendAvailable = false; }
-      }
-      if(backendAvailable){
-        // If backend available, use SSE stream
-        // Close previous EventSource if any
-        if(currentEventSource){
-          try{ currentEventSource.close(); }catch(e){}
-          currentEventSource = null;
-        }
-        // build URL
-        const params = new URLSearchParams({prompt});
-        if(proxySecret) params.set('secret', proxySecret);
-        const url = '/sse?' + params.toString();
-        try{
-          setSpinner(true);
-          currentEventSource = new EventSource(url);
-          aiResponse.textContent = '';
-          currentEventSource.onmessage = (e)=>{
-            // append chunked data
-            aiResponse.textContent += e.data;
-          };
-          currentEventSource.onerror = (e)=>{
-            setSpinner(false);
-            try{ currentEventSource.close(); }catch(_){}
-            currentEventSource = null;
-          };
-        }catch(e){
-          setSpinner(false);
-          aiResponse.textContent = 'SSE 連線失敗：'+e.message;
-        }
-        return;
-      }
-      if(key){
-        const res = await fetch('https://api.openai.com/v1/chat/completions',{
-          method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-          body: JSON.stringify({model:'gpt-3.5-turbo', messages:[{role:'user', content:prompt}], max_tokens:300})
-        });
-        const data = await res.json();
-        aiResponse.textContent = data?.choices?.[0]?.message?.content || JSON.stringify(data);
-      }
-    }catch(e){ aiResponse.textContent = '錯誤：'+e.message; }
-    finally{ setSpinner(false); }
+    if(prompt.length < 3) return;
+    await startAIStream(prompt);
   }, 600);
 
   aiPrompt.addEventListener('input', liveSend);
+
+  async function startAIStream(prompt){
+    aiResponse.textContent = '查詢中...';
+    setSpinner(true);
+    try{
+      if(currentEventSource){
+        try{ currentEventSource.close(); }catch(e){}
+        currentEventSource = null;
+      }
+      const params = new URLSearchParams({prompt});
+      const url = `${apiBaseUrl}/sse?` + params.toString();
+      let streamEnded = false;
+      const eventSource = new EventSource(url);
+      currentEventSource = eventSource;
+      aiResponse.textContent = '';
+      eventSource.onmessage = (e)=>{
+        aiResponse.textContent += e.data.replace(/\n/g, '\n');
+      };
+      eventSource.addEventListener('sse_error', (e)=>{
+        streamEnded = true;
+        setSpinner(false);
+        aiResponse.textContent = 'AI 服務錯誤：' + e.data;
+        try{ eventSource.close(); }catch(_){ }
+        if(currentEventSource === eventSource) currentEventSource = null;
+      });
+      eventSource.addEventListener('sse_end', ()=>{
+        streamEnded = true;
+        setSpinner(false);
+        try{ eventSource.close(); }catch(_){ }
+        if(currentEventSource === eventSource) currentEventSource = null;
+      });
+      eventSource.onerror = () =>{
+        if(streamEnded) return;
+        if(eventSource.readyState === EventSource.CLOSED) return;
+        setSpinner(false);
+        aiResponse.textContent = 'AI 服務連線中斷，請稍後再試。';
+        try{ eventSource.close(); }catch(_){ }
+        if(currentEventSource === eventSource) currentEventSource = null;
+      };
+    }catch(e){
+      aiResponse.textContent = '錯誤：' + e.message;
+      setSpinner(false);
+    }
+  }
 
   // Init
   function init(){
@@ -390,6 +474,8 @@
     updateDisplay();
     startChart();
     renderStats('day');
+    renderRecordList();
+    showPage('timer');
   }
 
   init();

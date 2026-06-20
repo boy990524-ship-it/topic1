@@ -1,14 +1,77 @@
 :root{
-  --bg:#f6f8fa;
+  --bg:#eef3f9;
   --card:#ffffff;
+  --text:#1f2937;
+  --muted:#6c757d;
+  --accent:#0d6efd;
+}
+*{
+  box-sizing:border-box;
 }
 body{
-  background:var(--bg);
-  font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  margin:0;
+  min-height:100vh;
+  background: linear-gradient(180deg, #f8fbff 0%, #eef3f9 100%);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
-.card{border-radius:12px; box-shadow:0 2px 8px rgba(20,20,30,0.04);}
-.clock-display .time{letter-spacing:2px}
-#modeLabel{font-size:0.9rem}
-.btn-group .btn.active{background:#0d6efd; color:#fff}
-.modal{display:none}
-.modal.show{display:block}
+.navbar{border-bottom:1px solid rgba(255,255,255,0.08);}
+.navbar-brand{font-weight:700;}
+.page-header h1{font-size:2rem;}
+.page-tabs .btn{min-width:110px;}
+.page-section{animation:fadeIn 0.25s ease-in-out;}
+.card{
+  background: var(--card);
+  border: none;
+  border-radius: 20px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+}
+.clock-display{
+  background: rgba(13, 110, 253, 0.08);
+  border-radius: 24px;
+  padding: 2rem 1rem;
+}
+.clock-display .time{
+  letter-spacing: 0.18em;
+}
+#modeLabel{
+  font-size: 0.95rem;
+  padding: 0.6rem 1rem;
+}
+.btn-primary{
+  min-height: 56px;
+}
+.btn-outline-secondary{
+  color: #495057;
+  border-color: rgba(73,80,87,.2);
+}
+.chart-card{
+  min-height: 320px;
+}
+.list-group-item{
+  border:none;
+  border-radius: 14px;
+  margin-bottom: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: #f8fbff;
+}
+.list-group-item:last-child{margin-bottom:0;}
+.record-title{
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.record-meta{
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.modal-content{
+  border-radius: 20px;
+}
+#aiResponse{
+  white-space: pre-wrap;
+}
+@keyframes fadeIn{
+  from{opacity:0; transform: translateY(8px);}
+  to{opacity:1; transform: translateY(0);}
+}
+.modal.show{display:block;}

@@ -16,64 +16,109 @@
       </div>
     </nav>
 
-    <main class="container">
-      <div class="row g-4">
-        <section class="col-lg-4">
-          <div class="card p-3">
-            <h5>番茄鐘</h5>
-            <div class="clock-display text-center my-3">
-              <div id="modeLabel" class="badge bg-primary">工作計時</div>
-              <div id="timeDisplay" class="time fs-1">25:00</div>
-            </div>
+    <main class="container pb-4">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3 mb-4 page-header">
+        <div>
+          <h1 class="mb-1">FocusStats</h1>
+          <p class="text-muted mb-0">將計時與紀錄分頁管理，更專注、更好閱讀。</p>
+        </div>
+        <div class="btn-group page-tabs" role="group" aria-label="page tabs">
+          <button id="tabTimer" class="btn btn-primary">計時</button>
+          <button id="tabRecords" class="btn btn-outline-primary">紀錄</button>
+        </div>
+      </div>
 
-            <div class="d-flex gap-2 mb-3">
-              <button id="startPauseBtn" class="btn btn-success flex-fill">開始</button>
-              <button id="resetBtn" class="btn btn-secondary">重置</button>
+      <section id="timerPage" class="page-section">
+        <div class="card p-4 shadow-sm">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h5 class="mb-1">番茄鐘</h5>
+              <p class="text-muted small mb-0">專注與休息分段管理，讓你更有效率。</p>
             </div>
+            <span class="badge rounded-pill bg-secondary">快速模式</span>
+          </div>
 
-            <div class="mb-2">
+          <div class="clock-display text-center py-4">
+            <div id="modeLabel" class="badge bg-primary mb-3">工作計時</div>
+            <div id="timeDisplay" class="time display-2 fw-bold">25:00</div>
+          </div>
+
+          <div class="d-flex gap-2 mb-4 flex-column flex-sm-row">
+            <button id="startPauseBtn" class="btn btn-lg btn-primary flex-fill">開始</button>
+            <button id="resetBtn" class="btn btn-lg btn-outline-secondary flex-fill">重置</button>
+          </div>
+
+          <div class="row gx-3 gy-3">
+            <div class="col-sm-6">
               <label class="form-label">模式</label>
               <select id="modeSelect" class="form-select">
                 <option value="work">工作計時</option>
                 <option value="break">休息計時</option>
               </select>
             </div>
-
-            <div class="row gy-2">
-              <div class="col-6">
-                <label class="form-label">工作（分鐘）</label>
-                <input id="workMinutes" type="number" min="1" class="form-control" value="25">
-              </div>
-              <div class="col-6">
-                <label class="form-label">休息（分鐘）</label>
-                <input id="breakMinutes" type="number" min="1" class="form-control" value="5">
-              </div>
+            <div class="col-sm-3">
+              <label class="form-label">工作（分鐘）</label>
+              <input id="workMinutes" type="number" min="1" class="form-control" value="25">
             </div>
+            <div class="col-sm-3">
+              <label class="form-label">休息（分鐘）</label>
+              <input id="breakMinutes" type="number" min="1" class="form-control" value="5">
+            </div>
+          </div>
 
-            <hr>
+          <div class="mt-4 text-end">
+            <button id="openAIBtn" class="btn btn-outline-primary">AI 查詢小助手</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="recordsPage" class="page-section d-none">
+        <div class="card p-4 shadow-sm mb-4">
+          <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
-              <button id="openAIBtn" class="btn btn-outline-primary w-100">AI 查詢小助手</button>
+              <h5 class="mb-1">閱讀與專注統計</h5>
+              <p class="text-muted small mb-0">查看過去紀錄，了解你的專注趨勢。</p>
             </div>
-          </div>
-        </section>
-
-        <section class="col-lg-8">
-          <div class="card p-3">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <h5 class="mb-0">閱讀與專注統計</h5>
-              <div>
-                <div class="btn-group" role="group" aria-label="view toggles">
-                  <button id="viewDay" class="btn btn-outline-primary active">本日</button>
-                  <button id="viewMonth" class="btn btn-outline-primary">本月</button>
-                  <button id="viewYear" class="btn btn-outline-primary">年度</button>
-                </div>
+            <div class="d-flex align-items-center gap-2">
+              <div class="btn-group" role="group" aria-label="view toggles">
+              <button id="viewDay" class="btn btn-outline-primary active">本日</button>
+              <button id="viewMonth" class="btn btn-outline-primary">本月</button>
+              <button id="viewYear" class="btn btn-outline-primary">年度</button>
+              </div>
+              <div class="d-flex gap-2 align-items-center ms-3">
+                <select id="recordFilter" class="form-select form-select-sm">
+                  <option value="all">全部</option>
+                  <option value="7">最近 7 天</option>
+                  <option value="30">最近 30 天</option>
+                  <option value="90">最近 90 天</option>
+                  <option value="custom">自訂區間</option>
+                </select>
+                <input id="filterStart" type="date" class="form-control form-control-sm" style="display:none; width:150px;" />
+                <input id="filterEnd" type="date" class="form-control form-control-sm" style="display:none; width:150px;" />
+                <button id="applyFilterBtn" class="btn btn-sm btn-primary">篩選</button>
               </div>
             </div>
-            <canvas id="statsChart" height="120"></canvas>
-            <div class="mt-3 small text-muted">所有資料儲存在瀏覽器 localStorage。</div>
           </div>
-        </section>
-      </div>
+          <div class="chart-card">
+            <canvas id="statsChart" height="140"></canvas>
+          </div>
+          <div class="mt-3 small text-muted">所有資料儲存在瀏覽器 localStorage。</div>
+        </div>
+
+        <div class="card p-4 shadow-sm">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h5 class="mb-1">最近紀錄</h5>
+              <p class="text-muted small mb-0">依時間排序顯示最近的專注紀錄。</p>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mb-2 gap-2">
+            <button id="exportCsvBtn" class="btn btn-sm btn-outline-secondary">匯出 CSV</button>
+            <button id="clearRecordsBtn" class="btn btn-sm btn-outline-danger">清除紀錄</button>
+          </div>
+          <div id="recordList" class="list-group"></div>
+        </div>
+      </section>
     </main>
 
     <!-- AI Assistant Modal -->
@@ -86,30 +131,18 @@
           </div>
           <div class="modal-body">
             <div class="mb-2">
-              <label class="form-label">API Key（可使用 OpenAI Key）</label>
-              <input id="apiKeyInput" class="form-control" placeholder="輸入 OpenAI API Key（直接呼叫）">
-            </div>
-            <div class="mb-2">
-              <label class="form-label">Proxy Secret（如後端啟用請填入）</label>
-              <input id="proxySecretInput" class="form-control" placeholder="輸入後端代理密鑰（可選）">
-            </div>
-            <div class="mb-2">
               <label class="form-label">請輸入問題</label>
-              <textarea id="aiPrompt" class="form-control" rows="4"></textarea>
+              <textarea id="aiPrompt" class="form-control" rows="4" placeholder="直接輸入你的問題，系統會自動回覆。"></textarea>
             </div>
             <div class="row g-2">
               <div class="col-6">
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" value="" id="forceProxyCheck" checked>
-                  <label class="form-check-label" for="forceProxyCheck">強制使用代理</label>
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="liveReplyCheck" checked>
+                  <label class="form-check-label" for="liveReplyCheck">即時回覆</label>
                 </div>
               </div>
               <div class="col-6 text-end">
                 <div class="d-flex align-items-center justify-content-end gap-2">
-                  <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="liveReplyCheck" checked>
-                    <label class="form-check-label" for="liveReplyCheck">即時回覆</label>
-                  </div>
                   <div id="aiSpinner" style="display:none; width:18px; height:18px;" class="spinner-border spinner-border-sm text-primary" role="status"></div>
                   <button id="sendAI" class="btn btn-primary">送出</button>
                 </div>
