@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>單字紀錄 - 發送到 Google 試算表</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      margin: 0;
+    }
+    .container {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      padding: 40px;
+      width: 100%;
+      max-width: 500px;
+    }
+    h1 {
+      color: #333;
+      margin-top: 0;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+      font-size: 14px;
+    }
+    input[type="text"],
+    textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+    input[type="text"]:focus,
+    textarea:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .message {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 4px;
+      display: none;
+      font-size: 14px;
+      animation: slideIn 0.3s ease-out;
+    }
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .message.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .message.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .required {
+      color: #e74c3c;
+    }
+    .hint {
+      font-size: 12px;
+      color: #999;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📝 新增單字</h1>
+    <p class="subtitle">將單字資料送至 Google 試算表</p>
+
+    <form id="wordForm">
+      <div class="form-group">
+        <label for="word">
+          單字 <span class="required">*</span>
+        </label>
+        <input 
+          type="text" 
+          id="word" 
+          name="word" 
+          placeholder="例：apple" 
+          required
+          autocomplete="off"
+        >
+        <div class="hint">英文單字或詞組</div>
+      </div>
+
+      <div class="form-group">
+        <label for="meaning">
+          中文意思 <span class="required">*</span>
+        </label>
+        <input 
+          type="text" 
+          id="meaning" 
+          name="meaning" 
+          placeholder="例：蘋果" 
+          required
+          autocomplete="off"
+        >
+        <div class="hint">中文翻譯或解釋</div>
+      </div>
+
+      <div class="form-group">
+        <label for="example">例句</label>
+        <textarea 
+          id="example" 
+          name="example" 
+          placeholder="例：An apple a day keeps the doctor away.&#10;（可選）"
+          autocomplete="off"
+        ></textarea>
+        <div class="hint">使用範例或相關例句</div>
+      </div>
+
+      <button type="button" id="submitBtn">是的，送出資料</button>
+    </form>
+
+    <div id="message" class="message"></div>
+  </div>
+
+  <script>
+    // ⚠️ 重要：替換下面的 GAS_URL
+    const GAS_URL = 'https://script.google.com/macros/d/YOUR_DEPLOYMENT_ID/userweb';
+
+    const form = document.getElementById('wordForm');
+    const wordInput = document.getElementById('word');
+    const meaningInput = document.getElementById('meaning');
+    const exampleInput = document.getElementById('example');
+    const submitBtn = document.getElementById('submitBtn');
+    const messageDiv = document.getElementById('message');
+
+    // 點擊「是的，送出資料」按鈕
+    submitBtn.addEventListener('click', async function() {
+      const word = wordInput.value.trim();
+      const meaning = meaningInput.value.trim();
+      const example = exampleInput.value.trim();
+
+      // 驗證必填欄位
+      if (!word || !meaning) {
+        showMessage('❌ 請填入單字和中文意思', 'error');
+        return;
+      }
+
+      // 禁用按鈕，防止重複送出
+      submitBtn.disabled = true;
+      submitBtn.textContent = '傳送中...';
+
+      try {
+        // 使用 fetch 發送 POST 到 GAS
+        const response = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            word: word,
+            meaning: meaning,
+            example: example
+          })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          showMessage('✅ 資料已成功保存到試算表！', 'success');
+          form.reset();
+          wordInput.focus();
+        } else {
+          showMessage('❌ 保存失敗：' + (result.error || '未知錯誤'), 'error');
+        }
+      } catch(error) {
+        showMessage('❌ 網路錯誤：' + error.message, 'error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '是的，送出資料';
+      }
+    });
+
+    // 顯示訊息函式
+    function showMessage(text, type) {
+      messageDiv.textContent = text;
+      messageDiv.className = 'message ' + type;
+      messageDiv.style.display = 'block';
+
+      // 5 秒後自動隱藏
+      setTimeout(() => {
+        messageDiv.style.display = 'none';
+      }, 5000);
+    }
+
+    // 提示使用者設定 GAS_URL
+    if (GAS_URL.includes('YOUR_DEPLOYMENT_ID')) {
+      showMessage('⚠️ 請先設定 GAS_URL（查看代碼第 40 行）', 'error');
+    }
+  </script>
+</body>
+</html>
