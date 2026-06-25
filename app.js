@@ -27,6 +27,15 @@
   const applyFilterBtn = document.getElementById('applyFilterBtn');
   const clearRecordsBtn = document.getElementById('clearRecordsBtn');
   const exportCsvBtn = document.getElementById('exportCsvBtn');
+  const taskInput = document.getElementById('taskInput');
+  const addTaskBtn = document.getElementById('addTaskBtn');
+  const clearCompletedBtn = document.getElementById('clearCompletedBtn');
+  const taskList = document.getElementById('taskList');
+  const taskSummary = document.getElementById('taskSummary');
+  const taskProgressBar = document.getElementById('taskProgressBar');
+  const taskCategoryInput = document.getElementById('taskCategory');
+  const taskGaugeFill = document.getElementById('taskGaugeFill');
+  const taskGaugeText = document.getElementById('taskGaugeText');
   let currentFilteredSessions = null;
   let lastStatsView = 'day';
 
@@ -40,11 +49,20 @@
   const aiSpinner = document.getElementById('aiSpinner');
   let currentEventSource = null;
 
+  // Record confirmation modal
+  const recordConfirmModal = new bootstrap.Modal(document.getElementById('recordConfirmModal'));
+  const closeRecordConfirm = document.getElementById('closeRecordConfirm');
+  const skipRecordBtn = document.getElementById('skipRecordBtn');
+  const confirmRecordBtn = document.getElementById('confirmRecordBtn');
+  const recordConfirmDuration = document.getElementById('recordConfirmDuration');
+  let pendingRecord = null; // {startTs, endTs, mode}
+
   // Timer state
   let mode = 'work'; // 'work' or 'break'
   let workSeconds = parseInt(workMinutesInput.value || 25) * 60;
   let breakSeconds = parseInt(breakMinutesInput.value || 5) * 60;
   let remaining = workSeconds;
+  let initialRemaining = workSeconds; // Track initial remaining for current session
   let intervalId = null;
   let running = false;
   let tickStart = null;
@@ -86,6 +104,7 @@
     if(running) return;
     running = true;
     startPauseBtn.textContent = '暫停';
+    initialRemaining = remaining; // Record initial remaining when starting
     tickStart = Date.now();
     intervalId = setInterval(tick, 1000);
   }
@@ -97,10 +116,26 @@
     intervalId = null;
   }
   function resetTimer(){
+    const timeSpent = initialRemaining - remaining;
+    
+    // Only show confirmation if user has spent some time (more than 0 seconds)
+    if(timeSpent > 0){
+      const endTs = Date.now();
+      const startTs = endTs - (timeSpent * 1000);
+      const mins = Math.round(timeSpent / 60);
+      
+      recordConfirmDuration.textContent = `本次計時：${mins} 分鐘`;
+      pendingRecord = {startTs, endTs, mode};
+      recordConfirmModal.show();
+      return;
+    }
+    
+    // If no time spent, just reset normally
     pauseTimer();
     workSeconds = parseInt(workMinutesInput.value||25)*60;
     breakSeconds = parseInt(breakMinutesInput.value||5)*60;
     remaining = (mode==='work')? workSeconds : breakSeconds;
+    initialRemaining = remaining;
     updateDisplay();
   }
 
@@ -112,13 +147,7 @@
       updateDisplay();
       pauseTimer();
       playBeep();
-      const endTs = Date.now();
-      const startTs = endTs - ((mode==='work')? (workSeconds*1000) : (breakSeconds*1000));
-      if(mode === 'work'){
-        // save a work session with actual duration (we approximate by configured duration)
-        addSession(startTs, endTs);
-      }
-      // auto-switch to other mode
+      // Auto-switch to next mode without asking
       mode = (mode==='work')? 'break' : 'work';
       modeSelect.value = mode;
       remaining = (mode==='work')? workSeconds : breakSeconds;
@@ -162,12 +191,18 @@
 
   workMinutesInput.addEventListener('change', ()=>{
     workSeconds = parseInt(workMinutesInput.value||25)*60;
-    if(mode==='work' && !running) remaining = workSeconds;
+    if(mode==='work' && !running) {
+      remaining = workSeconds;
+      initialRemaining = workSeconds;
+    }
     updateDisplay();
   });
   breakMinutesInput.addEventListener('change', ()=>{
     breakSeconds = parseInt(breakMinutesInput.value||5)*60;
-    if(mode==='break' && !running) remaining = breakSeconds;
+    if(mode==='break' && !running) {
+      remaining = breakSeconds;
+      initialRemaining = breakSeconds;
+    }
     updateDisplay();
   });
 
@@ -271,6 +306,132 @@
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+  });
+
+  const TASKS_KEY = 'focus_tasks_v1';
+
+  function loadTasks(){
+    const raw = localStorage.getItem(TASKS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  }
+
+  function saveTasks(tasks){
+    localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+  }
+
+  function renderTasks(){
+    const tasks = loadTasks();
+    const total = tasks.length;
+    const completedCount = tasks.filter(task => task.completed).length;
+    if(taskSummary){
+      taskSummary.textContent = total === 0
+        ? '目前尚無任務，請建立今日重點。'
+        : `今日任務 ${total} 件，完成 ${completedCount} 件`;
+    }
+    if(taskProgressBar){
+      const percent = total ? Math.round((completedCount / total) * 100) : 0;
+      taskProgressBar.style.width = `${percent}%`;
+      taskProgressBar.textContent = total ? `${percent}%` : '';
+      updateTaskGauge(percent);
+    }
+    if(!taskList) return;
+    if(!tasks.length){
+      taskList.innerHTML = '<div class="text-muted">尚無任務，請新增一個今日重點。</div>';
+      return;
+    }
+    taskList.innerHTML = tasks.map(task => {
+      const checked = task.completed ? 'checked' : '';
+      const labelClass = task.completed ? 'text-decoration-line-through text-muted' : '';
+      const cat = task.category ? `<span class="badge bg-secondary ms-2">${escapeHtml(task.category)}</span>` : '';
+      return `<label class="list-group-item task-item d-flex align-items-center justify-content-between">
+        <div class="form-check d-flex align-items-center gap-2">
+          <input class="form-check-input task-toggle" type="checkbox" data-id="${task.id}" ${checked}>
+          <span class="form-check-label ${labelClass}">${escapeHtml(task.title)}${cat}</span>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary task-remove" data-id="${task.id}">刪除</button>
+      </label>`;
+    }).join('');
+  }
+
+  function updateTaskGauge(percent){
+    if(!taskGaugeFill || !taskGaugeText) return;
+    const r = 28;
+    const c = 2 * Math.PI * r;
+    const pct = Math.max(0, Math.min(100, percent));
+    const offset = c * (1 - pct/100);
+    taskGaugeFill.style.strokeDasharray = `${c.toFixed(2)}`;
+    taskGaugeFill.style.strokeDashoffset = `${offset.toFixed(2)}`;
+    taskGaugeText.textContent = pct + '%';
+  }
+
+  function addTask(title){
+    const tasks = loadTasks();
+    const category = taskCategoryInput?.value?.trim() || '';
+    tasks.unshift({id: Date.now().toString(), title: title.trim(), category, completed: false, createdAt: Date.now()});
+    saveTasks(tasks);
+    renderTasks();
+  }
+
+  function toggleTaskCompleted(taskId, completed){
+    const tasks = loadTasks();
+    const updated = tasks.map(task => task.id === taskId ? {...task, completed} : task);
+    saveTasks(updated);
+    renderTasks();
+  }
+
+  function removeTask(taskId){
+    const tasks = loadTasks().filter(task => task.id !== taskId);
+    saveTasks(tasks);
+    renderTasks();
+  }
+
+  function clearCompletedTasks(){
+    const tasks = loadTasks().filter(task => !task.completed);
+    saveTasks(tasks);
+    renderTasks();
+  }
+
+  function escapeHtml(text){
+    return text.replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  addTaskBtn?.addEventListener('click', ()=>{
+    const text = taskInput?.value.trim();
+    if(!text) return;
+    addTask(text);
+    if(taskInput) taskInput.value = '';
+    if(taskCategoryInput) taskCategoryInput.value = '';
+  });
+
+  taskInput?.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      addTaskBtn?.click();
+    }
+  });
+
+  taskList?.addEventListener('click', (e)=>{
+    const target = e.target;
+    if(target.matches('.task-toggle')){
+      const id = target.dataset.id;
+      toggleTaskCompleted(id, target.checked);
+    }
+    if(target.matches('.task-remove')){
+      const id = target.dataset.id;
+      removeTask(id);
+    }
+    // handle clicks on badge area (if user clicks the title span)
+    if(target.matches('.form-check-label')){
+      const checkbox = target.parentElement.querySelector('.task-toggle');
+      if(checkbox){
+        checkbox.checked = !checkbox.checked;
+        toggleTaskCompleted(checkbox.dataset.id, checkbox.checked);
+      }
+    }
+  });
+
+  clearCompletedBtn?.addEventListener('click', ()=>{
+    clearCompletedTasks();
   });
 
   function renderRecordList(sessionsOverride){
@@ -397,71 +558,67 @@
     await startAIStream(prompt);
   });
 
-  const apiBaseUrl = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
+  // Record confirmation dialog
+  closeRecordConfirm.addEventListener('click', ()=> recordConfirmModal.hide());
+  skipRecordBtn.addEventListener('click', ()=>{
+    recordConfirmModal.hide();
+    pendingRecord = null;
+    // Just reset without recording
+    pauseTimer();
+    workSeconds = parseInt(workMinutesInput.value||25)*60;
+    breakSeconds = parseInt(breakMinutesInput.value||5)*60;
+    remaining = (mode==='work')? workSeconds : breakSeconds;
+    updateDisplay();
+  });
+  confirmRecordBtn.addEventListener('click', ()=>{
+    if(pendingRecord && pendingRecord.mode === 'work'){
+      addSession(pendingRecord.startTs, pendingRecord.endTs);
+    }
+    recordConfirmModal.hide();
+    pendingRecord = null;
+    // Reset after recording
+    pauseTimer();
+    workSeconds = parseInt(workMinutesInput.value||25)*60;
+    breakSeconds = parseInt(breakMinutesInput.value||5)*60;
+    remaining = (mode==='work')? workSeconds : breakSeconds;
+    updateDisplay();
+  });
 
-  // Live reply: send on input with debounce
   function setSpinner(show){
     if(!aiSpinner) return;
     aiSpinner.style.display = show ? 'inline-block' : 'none';
   }
 
-  function debounce(fn, wait){
-    let t;
-    return (...args)=>{
-      clearTimeout(t);
-      t = setTimeout(()=>fn(...args), wait);
-    };
+  function getGuidance(prompt){
+    const trimmed = String(prompt || '').trim();
+    if(!trimmed){
+      return '請先描述你的學習或專注狀況，讓我幫你整理下一步方向。';
+    }
+    const lower = trimmed.toLowerCase();
+    if(lower.includes('專注') || lower.includes('注意力') || lower.includes('分心')){
+      return '建議先設定 25 分鐘專注時段，期間關閉通知與分心來源，結束後再休息 5 分鐘。';
+    }
+    if(lower.includes('規劃') || lower.includes('計畫') || lower.includes('待辦')){
+      return '你可以先寫下今天最重要的三件事，依優先順序安排時間，並把大任務拆成 10-15 分鐘的小步驟。';
+    }
+    if(lower.includes('學習') || lower.includes('讀書') || lower.includes('考試')){
+      return '試試「先閱讀重點，再用自己的話整理，再練習」的模式，這樣能快速找到知識結構。';
+    }
+    if(lower.includes('休息') || lower.includes('疲勞') || lower.includes('累')){
+      return '建議做 5 分鐘伸展與深呼吸休息，或改用番茄鐘模式短暫離開並回復專注。';
+    }
+    return '建議先把當前目標寫下來，選一件最重要的任務，專注完成 10-25 分鐘後再檢視成果。';
   }
 
-  const liveSend = debounce(async ()=>{
-    if(!liveReplyCheck || !liveReplyCheck.checked) return;
-    const prompt = aiPrompt.value.trim();
-    if(prompt.length < 3) return;
-    await startAIStream(prompt);
-  }, 600);
-
-  aiPrompt.addEventListener('input', liveSend);
-
   async function startAIStream(prompt){
-    aiResponse.textContent = '查詢中...';
+    aiResponse.textContent = '生成方向建議...';
     setSpinner(true);
     try{
-      if(currentEventSource){
-        try{ currentEventSource.close(); }catch(e){}
-        currentEventSource = null;
-      }
-      const params = new URLSearchParams({prompt});
-      const url = `${apiBaseUrl}/sse?` + params.toString();
-      let streamEnded = false;
-      const eventSource = new EventSource(url);
-      currentEventSource = eventSource;
-      aiResponse.textContent = '';
-      eventSource.onmessage = (e)=>{
-        aiResponse.textContent += e.data.replace(/\n/g, '\n');
-      };
-      eventSource.addEventListener('sse_error', (e)=>{
-        streamEnded = true;
-        setSpinner(false);
-        aiResponse.textContent = 'AI 服務錯誤：' + e.data;
-        try{ eventSource.close(); }catch(_){ }
-        if(currentEventSource === eventSource) currentEventSource = null;
-      });
-      eventSource.addEventListener('sse_end', ()=>{
-        streamEnded = true;
-        setSpinner(false);
-        try{ eventSource.close(); }catch(_){ }
-        if(currentEventSource === eventSource) currentEventSource = null;
-      });
-      eventSource.onerror = () =>{
-        if(streamEnded) return;
-        if(eventSource.readyState === EventSource.CLOSED) return;
-        setSpinner(false);
-        aiResponse.textContent = 'AI 服務連線中斷，請稍後再試。';
-        try{ eventSource.close(); }catch(_){ }
-        if(currentEventSource === eventSource) currentEventSource = null;
-      };
+      await new Promise(resolve => setTimeout(resolve, 500));
+      aiResponse.textContent = getGuidance(prompt);
     }catch(e){
-      aiResponse.textContent = '錯誤：' + e.message;
+      aiResponse.textContent = '發生錯誤，請稍後再試。';
+    }finally{
       setSpinner(false);
     }
   }
@@ -475,6 +632,7 @@
     startChart();
     renderStats('day');
     renderRecordList();
+    renderTasks();
     showPage('timer');
   }
 

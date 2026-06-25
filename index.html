@@ -29,7 +29,7 @@
       </div>
 
       <section id="timerPage" class="page-section">
-        <div class="card p-4 shadow-sm">
+        <div class="card p-4 shadow-sm mb-4">
           <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
               <h5 class="mb-1">番茄鐘</h5>
@@ -67,8 +67,39 @@
           </div>
 
           <div class="mt-4 text-end">
-            <button id="openAIBtn" class="btn btn-outline-primary">AI 查詢小助手</button>
+            <button id="openAIBtn" class="btn btn-outline-primary">方向指引</button>
           </div>
+        </div>
+
+        <div class="card p-4 shadow-sm">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h5 class="mb-1">任務規劃</h5>
+              <p class="text-muted small mb-0">建立今天重點任務，完成一項就勾選它。</p>
+            </div>
+            <button id="clearCompletedBtn" class="btn btn-sm btn-outline-danger">清除已完成</button>
+          </div>
+          <div class="mb-3 d-flex align-items-center justify-content-between gap-3">
+            <div class="flex-fill">
+              <div id="taskSummary" class="fw-semibold text-primary mb-2">今日任務 0 件，完成 0 件</div>
+              <div class="progress" style="height: 10px; border-radius: 999px;">
+                <div id="taskProgressBar" class="progress-bar bg-primary" role="progressbar" style="width: 0%; border-radius: 999px;"></div>
+              </div>
+            </div>
+            <div id="taskGauge" class="d-flex align-items-center ms-3" style="width:86px;">
+              <svg width="64" height="64" viewBox="0 0 64 64">
+                <circle cx="32" cy="32" r="28" stroke="#e9f2ff" stroke-width="6" fill="none"></circle>
+                <circle id="taskGaugeFill" cx="32" cy="32" r="28" stroke="#0d6efd" stroke-width="6" fill="none" stroke-linecap="round" transform="rotate(-90 32 32)" stroke-dasharray="175.84" stroke-dashoffset="175.84"></circle>
+                <text id="taskGaugeText" x="32" y="36" text-anchor="middle" font-size="12" fill="#0d6efd" font-weight="700">0%</text>
+              </svg>
+            </div>
+          </div>
+          <div class="input-group mb-3">
+            <input id="taskInput" type="text" class="form-control" placeholder="輸入新的任務內容" />
+            <input id="taskCategory" type="text" class="form-control" placeholder="分類 (選填)" style="max-width:160px;" />
+            <button id="addTaskBtn" class="btn btn-primary">新增任務</button>
+          </div>
+          <div id="taskList" class="list-group"></div>
         </div>
       </section>
 
@@ -121,37 +152,48 @@
       </section>
     </main>
 
-    <!-- AI Assistant Modal -->
+    <!-- Record Confirmation Modal -->
+    <div class="modal" tabindex="-1" id="recordConfirmModal">
+      <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">計時重置</h5>
+            <button type="button" class="btn-close" id="closeRecordConfirm"></button>
+          </div>
+          <div class="modal-body">
+            <p>要記錄這次的計時嗎？</p>
+            <div id="recordConfirmDuration" class="text-muted small mb-3"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="skipRecordBtn">否</button>
+            <button type="button" class="btn btn-primary" id="confirmRecordBtn">是</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Direction Guidance Modal -->
     <div class="modal" tabindex="-1" id="aiModal">
       <div class="modal-dialog modal-lg">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">AI 查詢小助手</h5>
+            <h5 class="modal-title">專注方向指引</h5>
             <button type="button" class="btn-close" id="closeAIModal"></button>
           </div>
           <div class="modal-body">
-            <div class="mb-2">
-              <label class="form-label">請輸入問題</label>
-              <textarea id="aiPrompt" class="form-control" rows="4" placeholder="直接輸入你的問題，系統會自動回覆。"></textarea>
+            <div class="mb-3">
+              <label class="form-label">描述你的學習或專注困境</label>
+              <textarea id="aiPrompt" class="form-control" rows="4" placeholder="例如：我想更專注讀書、或需要規劃今天的學習優先順序。"></textarea>
             </div>
-            <div class="row g-2">
-              <div class="col-6">
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" id="liveReplyCheck" checked>
-                  <label class="form-check-label" for="liveReplyCheck">即時回覆</label>
-                </div>
-              </div>
-              <div class="col-6 text-end">
-                <div class="d-flex align-items-center justify-content-end gap-2">
-                  <div id="aiSpinner" style="display:none; width:18px; height:18px;" class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                  <button id="sendAI" class="btn btn-primary">送出</button>
-                </div>
-              </div>
+            <div class="mb-3 text-muted small">我們會根據你的情境提供具體方向建議，不會進行實際 AI 查詢。</div>
+            <div class="d-flex justify-content-end align-items-center gap-2">
+              <div id="aiSpinner" style="display:none; width:18px; height:18px;" class="spinner-border spinner-border-sm text-primary" role="status"></div>
+              <button id="sendAI" class="btn btn-primary">取得指引</button>
             </div>
-            <hr>
+            <hr class="my-4">
             <div>
-              <label class="form-label">AI 回覆</label>
-              <div id="aiResponse" class="border rounded p-2" style="min-height:120px; background:#fafafa;"></div>
+              <label class="form-label">方向建議</label>
+              <div id="aiResponse" class="border rounded p-3" style="min-height:140px; background:#f8fbff;"></div>
             </div>
           </div>
         </div>
